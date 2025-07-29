@@ -4,5 +4,5 @@ app = FastAPI()
 
 @app.get("/")
 def read_root():
-        return {"message": "FastAPI is live!. start writing the apis"}
+        return {"message": "FastAPI is live!. start writing the apis this is to test the api"}
 
