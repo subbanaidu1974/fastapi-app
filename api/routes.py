@@ -10,7 +10,7 @@ CENSUS_BASE_URL = "https://api.census.gov/data"
 URL_PATH = "/2023/acs/acs5"
 CENSUS_URL = CENSUS_BASE_URL + URL_PATH
 
-@router.get("/state-fips", name="Get All state fips codes", tags=["Get All state fips codes"])
+@router.get("/state-fips")
 async def get_state_fips():
     params = {
         "get": "NAME",
@@ -30,7 +30,7 @@ async def get_state_fips():
     except requests.exceptions.RequestException as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@router.get("/state-name-by-fips",name="Get State Name By Fips", tags=["Get State Name By Fips"])
+@router.get("/state-name-by-fips")
 def get_census_data(    
     state: str = Query(..., description="State FIPS code, e.g. 06 for California")
     ):    
@@ -43,7 +43,7 @@ def get_census_data(
         return {"error": response.text}    
     return response.json()
     
-@router.get("/state-fips-by-state", name="Get Fips By StateName", tags=["Get Fips By State Name"])
+@router.get("/state-fips-by-state")
 async def get_state_fips(state_name: str = Query(None, description="Full name of the state (e.g. California)")):
     params = {
         "get": "NAME",
@@ -60,7 +60,7 @@ async def get_state_fips(state_name: str = Query(None, description="Full name of
     except requests.exceptions.RequestException as e:
         raise HTTPException(status_code=500, detail=str(e))
     
-@router.get("/state-names", name="Get All State Names", tags=["Get All State Names"])
+@router.get("/state-names")
 async def get_state_names():
     try:
         response = requests.get(f"{CENSUS_URL}?get=NAME&for=state:*")
