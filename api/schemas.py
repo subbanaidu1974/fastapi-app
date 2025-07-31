@@ -1,17 +1,11 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from typing import Optional, Dict, Any
 
 class DataQueryParams(BaseModel):
     get: str
-    for_: str  # alias will be used in router
-    in_: Optional[str] = None
+    for_: str = Field(..., alias="for")
+    in_: Optional[str] = Field(None, alias="in")
     key: Optional[str] = None
-
-    class Config:
-        fields = {
-            'for_': {'alias': 'for'},
-            'in_': {'alias': 'in'}
-        }
 
 class VariableInfo(BaseModel):
     label: str

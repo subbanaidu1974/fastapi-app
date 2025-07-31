@@ -1,10 +1,8 @@
+# main.py
+
 from fastapi import FastAPI
-from api.routes import router as census_router
+from api.routes import router  # import your router
 
-app = FastAPI(
-    title="US Census Bureau Proxy API",
-    description="Proxy wrapper based on the MTNA community OpenAPI spec",
-    version="1.0.0"
-)
+app = FastAPI(title="Census API Wrapper")
 
-app.include_router(census_router, prefix="")
+app.include_router(router,prefix='/api')
