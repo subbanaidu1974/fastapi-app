@@ -3,6 +3,8 @@
 from fastapi import APIRouter, Query, HTTPException
 from typing import List
 import requests
+from fastapi import FastAPI, Request, HTTPException
+from fastapi.openapi.docs import get_swagger_ui_html, get_redoc_html
 
 router = APIRouter()
 
@@ -192,3 +194,22 @@ def get_counties_by_state(baseurl:str,state_name: str):
         "state": state_name,
         "counties": counties
     }
+    
+    
+# Allowed IPs for docs (e.g. localhost only)
+ALLOWED_DOC_IPS = {"127.0.0.1", "::1"}
+
+def check_ip(request: Request):
+    client_ip = request.client.host
+    if client_ip not in ALLOWED_DOC_IPS:
+        raise HTTPException(status_code=403, detail="Access forbidden")
+
+@router.get("/docs", include_in_schema=False)
+async def custom_swagger_docs(request: Request):
+    check_ip(request)
+    return get_swagger_ui_html(openapi_url=router.openapi_url, title="Docs")
+
+@router.get("/redoc", include_in_schema=False)
+async def custom_redoc_docs(request: Request):
+    check_ip(request)
+    return get_redoc_html(openapi_url=router.openapi_url, title="Redoc")
