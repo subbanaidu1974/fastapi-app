@@ -1,0 +1,31 @@
+services:
+  fastapi:
+    build: .
+    container_name: fastapi-app
+    env_file: .env
+    ports:
+      - "8000:8000"
+    depends_on:
+      - mongo
+      - redis
+    volumes:
+      - ./app:/app  # for local dev hot-reload (optional)
+  
+  mongo:
+    image: mongo:6.0
+    container_name: mongo
+    restart: always
+    ports:
+      - "28017:27017"
+    volumes:
+      - mongo_data:/data/db
+
+  redis:
+    image: redis:7-alpine
+    container_name: redis
+    restart: always
+    ports:
+      - "6379:6379"
+
+volumes:
+  mongo_data:
