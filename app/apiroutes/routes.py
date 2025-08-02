@@ -8,8 +8,15 @@ from fastapi.openapi.docs import get_swagger_ui_html, get_redoc_html
 from utils.key_utils import validate_api_key_with_rate_limit
 from utils.constants import ALLOWED_DOC_IPS, CENSUS_BASE_URL,CENSUS_URL
 from utils.geoapi_utils import check_ip, get_county_fips,get_state_fips
+from datetime import datetime
+from db import usage_collection
 
 router = APIRouter()
+
+@router.get("/usage-stats")
+async def get_usage_stats(user=Depends(validate_api_key_with_rate_limit)):
+    stats = list(usage_collection.find({"api_key": user["api_key"]}, {"_id": 0}))
+    return {"user": user["user"], "usage": stats}
 
 @router.get("/secure-data")
 async def secure_data(request: Request, user=Depends(validate_api_key_with_rate_limit)):
@@ -182,3 +189,7 @@ async def custom_swagger_ui_html(request: Request):
 async def custom_redoc_docs(request: Request):
     check_ip(request)
     return get_redoc_html(openapi_url=router.openapi_url, title="Redoc")
+
+
+
+

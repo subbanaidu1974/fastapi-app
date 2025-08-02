@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException, Depends
+from fastapi import FastAPI, HTTPException, Depends, Request
 from fastapi.security import APIKeyHeader
 from starlette.status import HTTP_401_UNAUTHORIZED
 import secrets
@@ -8,7 +8,7 @@ from pymongo.errors import DuplicateKeyError
 from utils.key_utils import API_KEY_NAME
 from apiroutes.routes import router
 from fastapi.openapi.utils import get_openapi
-from db import keys_collection
+from db import keys_collection, usage_collection
 
 # API_KEY_NAME = "x-api-key"
 # api_key_header = APIKeyHeader(name=API_KEY_NAME, auto_error=False)
@@ -26,16 +26,28 @@ async def startup_event():
     # Ensure unique index on api_key
     keys_collection.create_index("api_key", unique=True)
 
-# ---- API Key validation ----
-# async def validate_api_key_with_rate_limit(api_key: str = Depends(api_key_header)):
-#     if not api_key:
-#         raise HTTPException(status_code=401, detail="Missing API key")
-
-#     record = keys_collection.find_one({"api_key": api_key, "active": True})
-#     if not record:
-#         raise HTTPException(status_code=401, detail="Invalid or inactive API key")
-#     rate_limit(api_key)  # Make sure this function is correct & doesn’t raise unexpected errors
-#     return record
+@app.middleware("http")
+async def track_api_usage(request: Request, call_next):
+    response = await call_next(request)
+    # Only track endpoints that require API key
+    api_key = request.headers.get("x-api-key")
+    if api_key:
+        today = datetime.utcnow().strftime("%Y-%m-%d")
+        # usage_collection.update_one(
+        #     {"api_key": api_key, "date": today},
+        #     {"$inc": {"count": 1}},
+        #     upsert=True
+        # )
+        usage_collection.update_one(
+            {"api_key": api_key, "date": today},
+            {
+                "$inc": {"count": 1, f"endpoints.{request.url.path}": 1},
+                "$setOnInsert": {"first_access": datetime.utcnow()},
+                "$set": {"last_access": datetime.utcnow()}
+            },
+            upsert=True
+        )
+    return response
 
 
 # ---- Generate a new API key ----
