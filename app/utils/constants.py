@@ -7,6 +7,7 @@ CENSUS_URL = CENSUS_BASE_URL + URL_PATH
 API_KEY_NAME = "x-api-key"
 MONGO_URI = "mongodb://mongo:27017"
 MONGO_APIKEY_DBNAME = "fastapi_keys"
-MONGO_APIKEY_COLLECTION_NAME = "apikeys"
+MONGO_APIKEY_COLLECTION_NAME = "api_keys"
+MONGO_STATS_COLLECTION_NAME = "api_usage"
 # Allowed IPs for docs (e.g. localhost only)
 ALLOWED_DOC_IPS = {"127.0.0.1", "::1"}
