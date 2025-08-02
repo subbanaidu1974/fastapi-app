@@ -9,12 +9,23 @@ from db import keys_collection, db,client
 from models import APIKeyModel
 from rate_limiter import rate_limit
 from utils.constants import API_KEY_NAME
+from passlib.hash import bcrypt
+
 # # Connect to MongoDB
 # client = MongoClient(MONGO_URI)
 # db = client[MONGO_APIKEY_DBNAME]
 # keys_collection = db[MONGO_APIKEY_COLLECTION_NAME]
 
 api_key_header = APIKeyHeader(name=API_KEY_NAME, auto_error=False)
+
+
+def hash_password(password: str) -> str:
+    return bcrypt.hash(password)
+
+
+def verify_password(plain_password: str, hashed_password: str) -> bool:
+    return bcrypt.verify(plain_password, hashed_password)
+
 
 # Function to generate a new API key
 def generate_api_key(length=32):
