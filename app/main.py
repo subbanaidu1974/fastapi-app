@@ -2,13 +2,19 @@ from fastapi import FastAPI, HTTPException, Depends, Request
 from fastapi.security import APIKeyHeader
 from starlette.status import HTTP_401_UNAUTHORIZED
 import secrets
-from models import APIKeyModel
+from models import APIKeyModel, UserCreateModel
 from datetime import datetime
 from pymongo.errors import DuplicateKeyError
-from utils.key_utils import API_KEY_NAME
+from utils.key_utils import API_KEY_NAME, hash_password,verify_password
 from apiroutes.routes import router
 from fastapi.openapi.utils import get_openapi
 from db import keys_collection, usage_collection
+from pymongo.errors import DuplicateKeyError
+import secrets
+from fastapi import HTTPException
+import secrets
+from datetime import datetime
+from pymongo.errors import DuplicateKeyError
 
 # API_KEY_NAME = "x-api-key"
 # api_key_header = APIKeyHeader(name=API_KEY_NAME, auto_error=False)
@@ -26,64 +32,98 @@ async def startup_event():
     # Ensure unique index on api_key
     keys_collection.create_index("api_key", unique=True)
 
+from fastapi import Request
+from datetime import datetime
+
 @app.middleware("http")
 async def track_api_usage(request: Request, call_next):
+    # Process the request first
     response = await call_next(request)
-    # Only track endpoints that require API key
+
+    # Extract API key
     api_key = request.headers.get("x-api-key")
     if api_key:
         today = datetime.utcnow().strftime("%Y-%m-%d")
-        # usage_collection.update_one(
-        #     {"api_key": api_key, "date": today},
-        #     {"$inc": {"count": 1}},
-        #     upsert=True
-        # )
+        endpoint = request.url.path
+
+        # Update MongoDB usage stats
         usage_collection.update_one(
             {"api_key": api_key, "date": today},
             {
-                "$inc": {"count": 1, f"endpoints.{request.url.path}": 1},
-                "$setOnInsert": {"first_access": datetime.utcnow()},
-                "$set": {"last_access": datetime.utcnow()}
+                "$inc": {"count": 1, f"endpoints.{endpoint}": 1},
+                "$setOnInsert": {
+                    "first_access": datetime.utcnow(),  # first hit of the day
+                },
+                "$set": {
+                    "last_access": datetime.utcnow()    # every request updates last access
+                }
             },
             upsert=True
         )
+
     return response
 
 
+
 # ---- Generate a new API key ----
+
+
 @app.post("/create-key")
-async def create_key(user: str):
-    existing_key = keys_collection.find_one({"user": user, "active": True})
+async def create_key(user: UserCreateModel):
+    # Check if user already exists and has an active API key
+    existing_key = keys_collection.find_one({"email": user.email, "active": True})
     if existing_key:
         return {
             "message": "User already has an active API key",
-            "user": user,
+            "email": user.email,
             "api_key": existing_key["api_key"]
         }
 
-    # Generate unique API key
+    # Generate a unique API key
     while True:
         new_key = secrets.token_hex(32)
         if not keys_collection.find_one({"api_key": new_key}):
             break
 
-    key_doc = APIKeyModel(user=user, api_key=new_key).dict()
+    # Prepare document
+    key_doc = APIKeyModel(
+        email=user.email,
+        api_key=new_key,
+        first_name=user.first_name,
+        last_name=user.last_name,
+        phone=user.phone
+    ).dict()
+
+    # Hash and store password separately
+    key_doc["password_hash"] = hash_password(user.password)
+
     try:
         keys_collection.insert_one(key_doc)
     except DuplicateKeyError:
-        # Retry once in extremely rare case of race condition
+        # Retry once if a race condition happens
         return await create_key(user)
-    
-    return {"message": "New API key created", "user": user, "api_key": new_key}
+
+    return {
+        "message": "New API key created",
+        "email": user.email,
+        "api_key": new_key
+    }
+
 
 # Rotate an existing key for the user
+
 @app.post("/rotate-key")
-async def rotate_key(user: str):
-    existing_key = keys_collection.find_one({"user": user, "active": True})
+async def rotate_key(email: str, password: str):
+    # Find the user with an active API key
+    existing_key = keys_collection.find_one({"email": email, "active": True})
     if not existing_key:
         raise HTTPException(status_code=404, detail="User has no active API key to rotate")
 
-    # Deactivate the old key
+    # Verify password
+    if not verify_password(password, existing_key["password_hash"]):
+        raise HTTPException(status_code=401, detail="Invalid email or password")
+
+    # Deactivate old key
     keys_collection.update_one(
         {"_id": existing_key["_id"]},
         {"$set": {"active": False, "deactivated_at": datetime.utcnow()}}
@@ -95,28 +135,29 @@ async def rotate_key(user: str):
         if not keys_collection.find_one({"api_key": new_key}):
             break
 
-    new_key_doc = APIKeyModel(user=user, api_key=new_key).dict()
+    new_key_doc = {
+        "email": existing_key["email"],
+        "api_key": new_key,
+        "active": True,
+        "created_at": datetime.utcnow(),
+        "first_name": existing_key["first_name"],
+        "last_name": existing_key["last_name"],
+        "phone": existing_key["phone"],
+        "password_hash": existing_key["password_hash"]  # reuse existing hash
+    }
+
     try:
         keys_collection.insert_one(new_key_doc)
     except DuplicateKeyError:
-        # Retry once if duplicate happens due to race condition
-        return await rotate_key(user)
+        # Retry once if a race condition happens
+        return await rotate_key(email, password)
 
     return {
         "message": "API key rotated successfully",
-        "user": user,
+        "email": email,
         "old_key": existing_key["api_key"],
         "new_key": new_key
-    } 
-
-
-# ---- Protected endpoint ----
-# @app.get("/secure-data")
-# async def secure_data(request: Request, user=Depends(validate_api_key_with_rate_limit)):
-#     try:
-#         return {"message": f"Hello {user['user']}, your API key is valid and within rate limits!"}
-#     except Exception as e:
-#         return {"error": str(e)}
+    }
 
 
 # # ---- Add Security for Swagger UI ----
@@ -143,5 +184,33 @@ def custom_openapi():
             openapi_schema["paths"][path][method]["security"] = [{"ApiKeyAuth": []}]
     app.openapi_schema = openapi_schema
     return app.openapi_schema
+
+
+@app.post("/get-api-key")
+async def get_api_key(email: str, password: str):
+    """
+    Returns the active API key for a user after verifying email & password.
+    """
+    # Find active API key for this user
+    user_doc = keys_collection.find_one({"email": email, "active": True})
+    
+    if not user_doc:
+        raise HTTPException(status_code=404, detail="User not found or no active API key")
+
+    # Verify password
+    if not verify_password(password, user_doc["password_hash"]):
+        raise HTTPException(status_code=401, detail="Invalid email or password")
+
+    return {
+        "message": "API key retrieved successfully",
+        "email": email,
+        "api_key": user_doc["api_key"],
+        "created_at": user_doc.get("created_at"),
+        "first_name": user_doc.get("first_name"),
+        "last_name": user_doc.get("last_name"),
+        "phone": user_doc.get("phone")
+    }
+
+
 
 app.openapi = custom_openapi

@@ -50,3 +50,13 @@ def check_ip(request: Request):
     client_ip = request.client.host
     if client_ip not in ALLOWED_DOC_IPS:
         raise HTTPException(status_code=403, detail="Access forbidden")
+    
+
+def clean_city_name(full_name: str) -> str:
+    # Remove everything after comma (e.g. ", Virginia")
+    city = full_name.split(",")[0]
+    # Remove suffixes like " town", " city", " village", " district"
+    for suffix in [" town", " city", " village", " district"]:
+        if city.endswith(suffix):
+            city = city[:-len(suffix)]
+    return city.strip()
