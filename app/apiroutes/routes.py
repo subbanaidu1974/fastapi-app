@@ -1,19 +1,25 @@
 # router.py
 
-from fastapi import APIRouter, Query, HTTPException
+from fastapi import APIRouter, Query, HTTPException, Depends
 from typing import List
 import requests
 from fastapi import FastAPI, Request, HTTPException
 from fastapi.openapi.docs import get_swagger_ui_html, get_redoc_html
+from utils.key_utils import validate_api_key_with_rate_limit
+from utils.constants import ALLOWED_DOC_IPS, CENSUS_BASE_URL,CENSUS_URL
+from utils.geoapi_utils import check_ip, get_county_fips,get_state_fips
 
 router = APIRouter()
 
-CENSUS_BASE_URL = "https://api.census.gov/data"
-URL_PATH = "/2023/acs/acs5"
-CENSUS_URL = CENSUS_BASE_URL + URL_PATH
+@router.get("/secure-data")
+async def secure_data(request: Request, user=Depends(validate_api_key_with_rate_limit)):
+    try:
+        return {"message": f"Hello {user['user']}, your API key is valid and within rate limits!"}
+    except Exception as e:
+        return {"error": str(e)}
 
 @router.get("/state-fips")
-async def get_state_fips():
+async def get_state_fips(user=Depends(validate_api_key_with_rate_limit)):
     params = {
         "get": "NAME",
         "for": "state:*"
@@ -27,14 +33,17 @@ async def get_state_fips():
         header, *rows = data
         result = [{"state_name": row[0], "state_fips": row[1]} for row in rows]
 
-        return {"states": result}
+        return {          
+            "states": result
+        }
     
     except requests.exceptions.RequestException as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.get("/state-name-by-fips")
-def get_census_data(    
-    state: str = Query(..., description="State FIPS code, e.g. 06 for California")
+async def get_census_data(    
+    state: str = Query(..., description="State FIPS code, e.g. 06 for California"), 
+    user=Depends(validate_api_key_with_rate_limit)
     ):    
     params = {
         "get": ",".join(["NAME"]),
@@ -46,7 +55,9 @@ def get_census_data(
     return response.json()
     
 @router.get("/state-fips-by-state")
-async def get_state_fips(state_name: str = Query(None, description="Full name of the state (e.g. California)")):
+async def get_state_fips(state_name: str = Query(None, description="Full name of the state (e.g. California)"),
+                         user=Depends(validate_api_key_with_rate_limit)
+                         ):
     params = {
         "get": "NAME",
         "for": "state:*"
@@ -63,7 +74,7 @@ async def get_state_fips(state_name: str = Query(None, description="Full name of
         raise HTTPException(status_code=500, detail=str(e))
     
 @router.get("/state-names")
-async def get_state_names():
+async def get_state_names(user=Depends(validate_api_key_with_rate_limit)):
     try:
         response = requests.get(f"{CENSUS_URL}?get=NAME&for=state:*")
         response.raise_for_status()
@@ -75,7 +86,7 @@ async def get_state_names():
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.get("/counties/{state_name}")
-async def get_counties_by_state(state_name: str):
+async def get_counties_by_state(state_name: str, user=Depends(validate_api_key_with_rate_limit)):
     state_fips = get_state_fips(CENSUS_BASE_URL,state_name)
     print("FIPS CODE ", state_fips)
     if not state_fips:
@@ -91,7 +102,7 @@ async def get_counties_by_state(state_name: str):
         raise HTTPException(status_code=500, detail="Failed to fetch counties")
 
 @router.get("/cities/{state_name}")
-def get_cities_by_state(state_name: str):
+def get_cities_by_state(state_name: str, user=Depends(validate_api_key_with_rate_limit)):
     state_fips = get_state_fips(CENSUS_BASE_URL,state_name)
     if not state_fips:
         raise HTTPException(status_code=404, detail="State not found")
@@ -106,7 +117,7 @@ def get_cities_by_state(state_name: str):
         raise HTTPException(status_code=500, detail=f"Error fetching cities: {str(e)}")   
 
 @router.get("/county-fips/{state_name}/{county_name}")
-def get_county_fips(state_name: str, county_name: str):
+def get_county_fips(state_name: str, county_name: str, user=Depends(validate_api_key_with_rate_limit)):
     state_fips = get_state_fips(CENSUS_BASE_URL,state_name)
     if not state_fips:
         raise HTTPException(status_code=404, detail="State not supported")
@@ -134,7 +145,7 @@ def get_county_fips(state_name: str, county_name: str):
         raise HTTPException(status_code=500, detail=f"Error fetching county FIPS: {str(e)}")
 
 @router.get("/cities/{state_name}/{county_name}")
-def get_cities_by_county_and_state(state_name: str, county_name: str):    
+def get_cities_by_county_and_state(state_name: str, county_name: str, user=Depends(validate_api_key_with_rate_limit)):    
     state_fips, county_fips = get_county_fips(CENSUS_BASE_URL,state_name,county_name)
     if not county_fips:
         raise HTTPException(status_code=404, detail="county not found")
@@ -153,61 +164,19 @@ def get_cities_by_county_and_state(state_name: str, county_name: str):
     except requests.RequestException as e:
         raise HTTPException(status_code=500, detail=f"Error fetching data: {str(e)}")
 
-def get_county_fips(baseurl:str,state_name: str, county_name: str):
-    base_url = baseurl + "/2020/dec/pl"
-    state_fips = get_state_fips(CENSUS_BASE_URL,state_name)
-    if not state_fips:
-        raise ValueError(f"State not found: {state_name}")
-    url = f"{base_url}?get=NAME&for=county:*&in=state:{state_fips}"
-    try:
-        resp = requests.get(url)
-        resp.raise_for_status()
-        data = resp.json()[1:]  # Skip header
-        for row in data:
-            name, state_code, county_code = row
-            if county_name.lower() in name.lower():
-                return state_fips, county_code
-        raise ValueError(f"County '{county_name}' not found in state '{state_name}'")
-    except requests.RequestException as e:
-        raise RuntimeError(f"Failed to fetch county FIPS: {e}")
-    
-def get_state_fips(baseurl:str, state_name: str) -> str:
-    url = baseurl + "/2020/dec/pl?get=NAME&for=state:*"
-    res = requests.get(url)
-    data = res.json()
-    for row in data[1:]:
-        if row[0].lower() == state_name.lower():
-            return row[1]
-    return None
-
-def get_counties_by_state(baseurl:str,state_name: str):
-    state_fips = get_state_fips(state_name)
-    if not state_fips:
-        raise ValueError("Invalid state name")
-
-    url = baseurl + "/2020/dec/pl?get=NAME&for=county:*&in=state:{state_fips}"
-    res = requests.get(url)
-    data = res.json()
-
-    counties = [row[0].replace(f", {state_name}", "") for row in data[1:]]
-    return {
-        "state": state_name,
-        "counties": counties
-    }
-    
-    
-# Allowed IPs for docs (e.g. localhost only)
-ALLOWED_DOC_IPS = {"127.0.0.1", "::1"}
-
-def check_ip(request: Request):
-    client_ip = request.client.host
-    if client_ip not in ALLOWED_DOC_IPS:
-        raise HTTPException(status_code=403, detail="Access forbidden")
 
 @router.get("/docs", include_in_schema=False)
-async def custom_swagger_docs(request: Request):
+async def custom_swagger_ui_html(request: Request):
     check_ip(request)
-    return get_swagger_ui_html(openapi_url=router.openapi_url, title="Docs")
+    return get_swagger_ui_html(
+        openapi_url=router.openapi_url,
+        title=router.title + " - Swagger UI",
+        swagger_favicon_url="https://fastapi.tiangolo.com/img/favicon.png",
+        swagger_ui_parameters={"persistAuthorization": False},
+        swagger_js_url="https://cdn.jsdelivr.net/npm/swagger-ui-dist@5/swagger-ui-bundle.js",
+        swagger_css_url="https://cdn.jsdelivr.net/npm/swagger-ui-dist@5/swagger-ui.css"
+    )
+
 
 @router.get("/redoc", include_in_schema=False)
 async def custom_redoc_docs(request: Request):
