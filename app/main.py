@@ -17,6 +17,7 @@ from datetime import datetime
 from pymongo.errors import DuplicateKeyError
 from fastapi.middleware.cors import CORSMiddleware
 from flask_cors import CORS
+from flask_cors import cross_origin
 
 # API_KEY_NAME = "x-api-key"
 # api_key_header = APIKeyHeader(name=API_KEY_NAME, auto_error=False)
@@ -82,6 +83,7 @@ from datetime import datetime
 
 
 @app.post("/create-key")
+@cross_origin(origins="https://api.accessapis.com")
 async def create_key(user: UserCreateModel):
     # Check if user already exists and has an active API key
     existing_key = keys_collection.find_one({"email": user.email, "active": True})
@@ -126,6 +128,7 @@ async def create_key(user: UserCreateModel):
 # Rotate an existing key for the user
 
 @app.post("/rotate-key")
+@cross_origin(origins="https://api.accessapis.com")
 async def rotate_key(email: str, password: str):
     # Find the user with an active API key
     existing_key = keys_collection.find_one({"email": email, "active": True})
@@ -200,6 +203,7 @@ def custom_openapi():
 
 
 @app.post("/get-api-key")
+@cross_origin(origins="https://api.accessapis.com")
 async def get_api_key(email: str, password: str):
     """
     Returns the active API key for a user after verifying email & password.
