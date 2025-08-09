@@ -22,6 +22,16 @@ from flask_cors import cross_origin
 # API_KEY_NAME = "x-api-key"
 # api_key_header = APIKeyHeader(name=API_KEY_NAME, auto_error=False)
 
+
+origins = {
+    "http://localhost:4200",
+    "http://localhost:4200",
+    "http://127.0.0.1:4200",
+    "https://api.accessapis.com",
+    "https://accessapis.com"
+    "http://accessapis.com"
+}
+
 app = FastAPI(
     title="My API",
     description="API with API Key authentication in Swagger UI",
@@ -30,16 +40,15 @@ app = FastAPI(
 )
 app.include_router(router,prefix='/api')
 
-CORS(app, resources={r"/api/*": {"origins": "*"}})
-
-
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # or ["http://localhost:4200"] for tighter security
+    allow_origins=origins,  # or ["http://localhost:4200"] for tighter security
     allow_credentials=True,
     allow_methods=["*"],  # allow all HTTP methods
     allow_headers=["*"],  # allow all headers, including x-api-key
 )
+
+# CORS(app, resources={r"/api/*": {"origins": "*"}})
 
 @app.on_event("startup")
 async def startup_event():
@@ -83,7 +92,7 @@ from datetime import datetime
 
 
 @app.post("/create-key")
-@cross_origin(origins="https://api.accessapis.com")
+# @cross_origin(origins="https://api.accessapis.com")
 async def create_key(user: UserCreateModel):
     # Check if user already exists and has an active API key
     existing_key = keys_collection.find_one({"email": user.email, "active": True})
@@ -128,7 +137,7 @@ async def create_key(user: UserCreateModel):
 # Rotate an existing key for the user
 
 @app.post("/rotate-key")
-@cross_origin(origins="https://api.accessapis.com")
+# @cross_origin(origins="https://api.accessapis.com")
 async def rotate_key(email: str, password: str):
     # Find the user with an active API key
     existing_key = keys_collection.find_one({"email": email, "active": True})
@@ -203,7 +212,7 @@ def custom_openapi():
 
 
 @app.post("/get-api-key")
-@cross_origin(origins="https://api.accessapis.com")
+# @cross_origin(origins="https://accessapis.com")
 async def get_api_key(email: str, password: str):
     """
     Returns the active API key for a user after verifying email & password.
