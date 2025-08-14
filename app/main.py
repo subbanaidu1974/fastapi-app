@@ -7,14 +7,10 @@ from datetime import datetime
 from pymongo.errors import DuplicateKeyError
 from utils.key_utils import API_KEY_NAME, hash_password,verify_password
 from apiroutes.routes import router
+from apiroutes.agencies_routes import agencies_router
 from fastapi.openapi.utils import get_openapi
 from db import keys_collection, usage_collection
-from pymongo.errors import DuplicateKeyError
-import secrets
-from fastapi import HTTPException
-import secrets
 from datetime import datetime
-from pymongo.errors import DuplicateKeyError
 from fastapi.middleware.cors import CORSMiddleware
 from flask_cors import CORS
 from flask_cors import cross_origin
@@ -38,8 +34,8 @@ app = FastAPI(
     version="1.0.0",
     swagger_ui_parameters={"persistAuthorization": False}  # keeps auth between reloads
 )
-app.include_router(router,prefix='/api')
-
+app.include_router(router,prefix='/api',tags=['General'])
+app.include_router(agencies_router,prefix='/agencies',tags=['Tax Agencies'])
 app.add_middleware(
     CORSMiddleware,
     allow_origins=origins,  # or ["http://localhost:4200"] for tighter security

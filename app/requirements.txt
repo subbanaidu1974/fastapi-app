@@ -8,3 +8,7 @@ redis
 passlib[bcrypt]
 pydantic[email]
 flask-cors
+motor
+datetime
+python-dateutil
+openai
