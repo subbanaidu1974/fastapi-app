@@ -90,7 +90,7 @@ async def create_key(user: UserCreateModel):
     if user.secret_key != "secret_route_key":
         raise HTTPException(status_code=403, detail="Unauthorized Access")
     else:
-        return await create_key(user)
+        return create_key(user)
 
 def create_key(user: UserCreateModel):
     # Check if user already exists and has an active API key
