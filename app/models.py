@@ -7,6 +7,7 @@ class UserCreateModel(BaseModel):
     first_name: str
     last_name: str
     phone: str
+    secret_key: str
 
 class APIKeyModel(BaseModel):
     email: EmailStr
@@ -16,3 +17,4 @@ class APIKeyModel(BaseModel):
     first_name: str
     last_name: str
     phone: str
+    is_admin: bool = False
