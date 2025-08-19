@@ -10,14 +10,13 @@ from utils.geoapi_utils import check_ip, get_county_fips,get_state_fips, clean_c
 from datetime import datetime
 from db import usage_collection
 from utils.usage_utils import track_usage
-
-router = APIRouter()
-
 from fastapi import Query, Depends
 from datetime import datetime
 from typing import Optional
+  
+geo_router = APIRouter()
 
-@router.get("/usage-stats")
+@geo_router.get("/usage-stats")
 async def get_usage_stats(
     start_date: Optional[str] = Query(None, description="Start date YYYY-MM-DD"),
     end_date: Optional[str] = Query(None, description="End date YYYY-MM-DD"),
@@ -57,14 +56,14 @@ async def get_usage_stats(
     }
 
 
-@router.get("/secure-data")
+@geo_router.get("/secure-data")
 async def secure_data(request: Request, user=Depends(track_usage)):
     try:
         return {"message": f"Hello {user['user']}, your API key is valid and within rate limits!"}
     except Exception as e:
         return {"error": str(e)}
 
-@router.get("/state-fips")
+@geo_router.get("/state-fips")
 async def get_state_fips_all(user=Depends(track_usage)):
     params = {
         "get": "NAME",
@@ -86,7 +85,7 @@ async def get_state_fips_all(user=Depends(track_usage)):
     except requests.exceptions.RequestException as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@router.get("/state-name-by-fips")
+@geo_router.get("/state-name-by-fips")
 async def get_census_data(    
     state: str = Query(..., description="State FIPS code, e.g. 06 for California"), 
     user=Depends(track_usage)
@@ -100,7 +99,7 @@ async def get_census_data(
         return {"error": response.text}    
     return response.json()
     
-@router.get("/state-fips-by-statename")
+@geo_router.get("/state-fips-by-statename")
 async def get_state_fips_by_statename(state_name: str = Query(None, description="Full name of the state (e.g. California)"),
                          user=Depends(track_usage)
                          ):
@@ -119,7 +118,7 @@ async def get_state_fips_by_statename(state_name: str = Query(None, description=
     except requests.exceptions.RequestException as e:
         raise HTTPException(status_code=500, detail=str(e))
     
-@router.get("/state-names")
+@geo_router.get("/state-names")
 async def get_state_names(user=Depends(track_usage)):
     try:
         response = requests.get(f"{CENSUS_URL}?get=NAME&for=state:*")
@@ -131,7 +130,7 @@ async def get_state_names(user=Depends(track_usage)):
     except requests.exceptions.RequestException as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@router.get("/counties/{state_name}")
+@geo_router.get("/counties/{state_name}")
 async def get_counties_by_state(state_name: str, user=Depends(track_usage)):
     state_fips = get_state_fips(CENSUS_BASE_URL,state_name)
     print("FIPS CODE ", state_fips)
@@ -147,7 +146,7 @@ async def get_counties_by_state(state_name: str, user=Depends(track_usage)):
     except requests.RequestException as e:
         raise HTTPException(status_code=500, detail="Failed to fetch counties")
 
-@router.get("/cities/{state_name}")
+@geo_router.get("/cities/{state_name}")
 def get_cities_by_state(state_name: str, user=Depends(track_usage)):
     state_fips = get_state_fips(CENSUS_BASE_URL,state_name)
     if not state_fips:
@@ -162,7 +161,7 @@ def get_cities_by_state(state_name: str, user=Depends(track_usage)):
     except requests.RequestException as e:
         raise HTTPException(status_code=500, detail=f"Error fetching cities: {str(e)}")   
 
-@router.get("/county-fips/{state_name}/{county_name}")
+@geo_router.get("/county-fips/{state_name}/{county_name}")
 def get_county_fips_by_state_and_county(state_name: str, county_name: str, user=Depends(track_usage)):
     state_fips = get_state_fips(CENSUS_BASE_URL,state_name)
     if not state_fips:
@@ -190,7 +189,7 @@ def get_county_fips_by_state_and_county(state_name: str, county_name: str, user=
     except requests.RequestException as e:
         raise HTTPException(status_code=500, detail=f"Error fetching county FIPS: {str(e)}")
 
-@router.get("/cities/{state_name}/{county_name}")
+@geo_router.get("/cities/{state_name}/{county_name}")
 async def get_cities_by_county_and_state(
     state_name: str,
     county_name: str,
@@ -248,7 +247,7 @@ async def get_cities_by_county_and_state(
 
 
 
-@router.get("/docs", include_in_schema=False)
+@geo_router.get("/docs")
 async def custom_swagger_ui_html(request: Request):
     check_ip(request)
     return get_swagger_ui_html(
@@ -261,7 +260,7 @@ async def custom_swagger_ui_html(request: Request):
     )
 
 
-@router.get("/redoc", include_in_schema=False)
+@geo_router.get("/redoc")
 async def custom_redoc_docs(request: Request):
     check_ip(request)
     return get_redoc_html(openapi_url=router.openapi_url, title="Redoc")

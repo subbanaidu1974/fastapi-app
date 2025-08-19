@@ -1,27 +1,20 @@
-from fastapi import FastAPI, HTTPException, Depends, Request
+from fastapi import APIRouter, FastAPI, HTTPException, Depends, Request
 from fastapi.security import APIKeyHeader
 from starlette.status import HTTP_401_UNAUTHORIZED
 import secrets
+from apiroutes.apikey_routes import create_key
 from models import APIKeyModel, UserCreateModel
 from datetime import datetime
 from pymongo.errors import DuplicateKeyError
 from utils.key_utils import API_KEY_NAME, hash_password,verify_password
-from apiroutes.routes import router
 from fastapi.openapi.utils import get_openapi
 from db import keys_collection, usage_collection
-from pymongo.errors import DuplicateKeyError
-import secrets
-from fastapi import HTTPException
-import secrets
 from datetime import datetime
-from pymongo.errors import DuplicateKeyError
 from fastapi.middleware.cors import CORSMiddleware
-from flask_cors import CORS
-from flask_cors import cross_origin
-
-# API_KEY_NAME = "x-api-key"
-# api_key_header = APIKeyHeader(name=API_KEY_NAME, auto_error=False)
-
+from apiroutes.agencies_routes import agencies_router
+from apiroutes.geo_routes import geo_router
+from apiroutes.apikey_routes import apikey_router
+import os
 
 origins = {
     "http://localhost:4200",
@@ -38,7 +31,10 @@ app = FastAPI(
     version="1.0.0",
     swagger_ui_parameters={"persistAuthorization": False}  # keeps auth between reloads
 )
-app.include_router(router,prefix='/api')
+
+app.include_router(geo_router,prefix='/api',tags=['General'], include_in_schema=(os.environ.get("ENV") == "LOCAL"))
+app.include_router(agencies_router,prefix='/agencies',tags=['Tax Agencies'])
+app.include_router(apikey_router,prefix='/apikey',tags=['API Keys'])
 
 app.add_middleware(
     CORSMiddleware,
@@ -54,136 +50,15 @@ app.add_middleware(
 async def startup_event():
     # Ensure unique index on api_key
     keys_collection.create_index("api_key", unique=True)
-
-from fastapi import Request
-from datetime import datetime
-
-# @app.middleware("http")
-# async def track_api_usage(request: Request, call_next):
-#     # Process the request first
-#     response = await call_next(request)
-
-#     # Extract API key
-#     api_key = request.headers.get("x-api-key")
-#     if api_key:
-#         today = datetime.utcnow().strftime("%Y-%m-%d")
-#         endpoint = request.url.path
-
-#         # Update MongoDB usage stats
-#         usage_collection.update_one(
-#             {"api_key": api_key, "date": today},
-#             {
-#                 "$inc": {"count": 1, f"endpoints.{endpoint}": 1},
-#                 "$setOnInsert": {
-#                     "first_access": datetime.utcnow(),  # first hit of the day
-#                 },
-#                 "$set": {
-#                     "last_access": datetime.utcnow()    # every request updates last access
-#                 }
-#             },
-#             upsert=True
-#         )
-
-#     return response
+    # user = UserCreateModel(email="subbanaidu@yahoo.com", password="admin123", first_name="Admin", last_name="Admin", phone="4445556666", is_admin=True)
+    # user: UserCreateModel = new UserCreateModel(email="admin", password="admin", first_name="Admin", last_name="Admin", phone="4445556666", is_admin=True) # type: ignore
+    # create_key(user)
 
 
-
-# ---- Generate a new API key ----
-
-
-@app.post("/create-key")
-# @cross_origin(origins="https://api.accessapis.com")
-async def create_key(user: UserCreateModel):
-    # Check if user already exists and has an active API key
-    existing_key = keys_collection.find_one({"email": user.email, "active": True})
-    if existing_key:
-        return {
-            "message": "User already has an active API key",
-            "email": user.email,
-            "api_key": existing_key["api_key"]
-        }
-
-    # Generate a unique API key
-    while True:
-        new_key = secrets.token_hex(32)
-        if not keys_collection.find_one({"api_key": new_key}):
-            break
-
-    # Prepare document
-    key_doc = APIKeyModel(
-        email=user.email,
-        api_key=new_key,
-        first_name=user.first_name,
-        last_name=user.last_name,
-        phone=user.phone
-    ).dict()
-
-    # Hash and store password separately
-    key_doc["password_hash"] = hash_password(user.password)
-
-    try:
-        keys_collection.insert_one(key_doc)
-    except DuplicateKeyError:
-        # Retry once if a race condition happens
-        return await create_key(user)
-
-    return {
-        "message": "New API key created",
-        "email": user.email,
-        "api_key": new_key
-    }
-
-
-# Rotate an existing key for the user
-
-@app.post("/rotate-key")
-# @cross_origin(origins="https://api.accessapis.com")
-async def rotate_key(email: str, password: str):
-    # Find the user with an active API key
-    existing_key = keys_collection.find_one({"email": email, "active": True})
-    if not existing_key:
-        raise HTTPException(status_code=404, detail="User has no active API key to rotate")
-
-    # Verify password
-    if not verify_password(password, existing_key["password_hash"]):
-        raise HTTPException(status_code=401, detail="Invalid email or password")
-
-    # Deactivate old key
-    keys_collection.update_one(
-        {"_id": existing_key["_id"]},
-        {"$set": {"active": False, "deactivated_at": datetime.utcnow()}}
-    )
-
-    # Generate a new unique API key
-    while True:
-        new_key = secrets.token_hex(32)
-        if not keys_collection.find_one({"api_key": new_key}):
-            break
-
-    new_key_doc = {
-        "email": existing_key["email"],
-        "api_key": new_key,
-        "active": True,
-        "created_at": datetime.utcnow(),
-        "first_name": existing_key["first_name"],
-        "last_name": existing_key["last_name"],
-        "phone": existing_key["phone"],
-        "password_hash": existing_key["password_hash"]  # reuse existing hash
-    }
-
-    try:
-        keys_collection.insert_one(new_key_doc)
-    except DuplicateKeyError:
-        # Retry once if a race condition happens
-        return await rotate_key(email, password)
-
-    return {
-        "message": "API key rotated successfully",
-        "email": email,
-        "old_key": existing_key["api_key"],
-        "new_key": new_key
-    }
-
+# @app.post("/enable-apis")
+# async def enable_apis(enable_apis: bool):
+#     g_enable_apis = enable_apis
+#     return {"message": "APIs enabled successfully"}
 
 # # ---- Add Security for Swagger UI ----
 def custom_openapi():
@@ -209,34 +84,6 @@ def custom_openapi():
             openapi_schema["paths"][path][method]["security"] = [{"ApiKeyAuth": []}]
     app.openapi_schema = openapi_schema
     return app.openapi_schema
-
-
-@app.post("/get-api-key")
-# @cross_origin(origins="https://accessapis.com")
-async def get_api_key(email: str, password: str):
-    """
-    Returns the active API key for a user after verifying email & password.
-    """
-    # Find active API key for this user
-    user_doc = keys_collection.find_one({"email": email, "active": True})
-    
-    if not user_doc:
-        raise HTTPException(status_code=404, detail="User not found or no active API key")
-
-    # Verify password
-    if not verify_password(password, user_doc["password_hash"]):
-        raise HTTPException(status_code=401, detail="Invalid email or password")
-
-    return {
-        "message": "API key retrieved successfully",
-        "email": email,
-        "api_key": user_doc["api_key"],
-        "created_at": user_doc.get("created_at"),
-        "first_name": user_doc.get("first_name"),
-        "last_name": user_doc.get("last_name"),
-        "phone": user_doc.get("phone")
-    }
-
 
 
 app.openapi = custom_openapi
